@@ -1,15 +1,8 @@
-package Lab1.Lab1
+package lab1.Lab1
 
-import Lab1.ExponentialDistribution
-import Lab1.PoissonDistribution
-import Lab1.UniformDistribution
-import org.apache.commons.math3.distribution.ChiSquaredDistribution
-import java.util.*
-import kotlin.collections.ArrayList
-import kotlin.math.ln
-import kotlin.math.pow
-import kotlin.math.roundToInt
-import kotlin.random.Random
+import lab1.ExponentialDistribution
+import lab1.PoissonDistribution
+import lab1.UniformDistribution
 
 fun main() {
     println("\n\n\n-={ Равномерное распределение случайной переменной }=-\n")

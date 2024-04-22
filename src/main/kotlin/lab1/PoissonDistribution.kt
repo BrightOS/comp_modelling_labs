@@ -1,4 +1,4 @@
-package Lab1
+package lab1
 
 import org.apache.commons.math3.distribution.ChiSquaredDistribution
 import org.apache.commons.numbers.combinatorics.Factorial
@@ -58,15 +58,15 @@ object PoissonDistribution {
         val alpha = 0.05
         val s = n - 2
 
-        val kritChi = ChiSquaredDistribution(s.toDouble()).inverseCumulativeProbability(1 - alpha)
-        val kritChiStr = String.format(Locale.US, "%.${Support.VALUE_ROUND}f", kritChi)
-        println("Табличное Хи^2 = $kritChiStr\n")
+        val criticalChi = ChiSquaredDistribution(s.toDouble()).inverseCumulativeProbability(1 - alpha)
+        val criticalChiStr = String.format(Locale.US, "%.${Support.VALUE_ROUND}f", criticalChi)
+        println("Табличное Хи^2 = $criticalChiStr\n")
 
         println(
-            if (chi < kritChi)
-                "Нулевая гипотеза принимается: $chiStr < $kritChiStr"
+            if (chi < criticalChi)
+                "Нулевая гипотеза принимается: $chiStr < $criticalChiStr"
             else
-                "Нулевая гипотеза отвергается: $chiStr >= $kritChiStr"
+                "Нулевая гипотеза отвергается: $chiStr >= $criticalChiStr"
         )
     }
 }

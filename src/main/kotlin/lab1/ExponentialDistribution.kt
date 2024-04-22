@@ -1,6 +1,6 @@
-package Lab1
+package lab1
 
-import Lab1.Support.VALUE_ROUND
+import lab1.Support.VALUE_ROUND
 import org.apache.commons.math3.distribution.ChiSquaredDistribution
 import java.util.*
 import kotlin.collections.ArrayList
@@ -90,15 +90,15 @@ object ExponentialDistribution {
         val alpha = 0.05
         val s = n - 2
 
-        val kritChi = ChiSquaredDistribution(s.toDouble()).inverseCumulativeProbability(1 - alpha)
-        val kritChiStr = String.format(Locale.US, "%.${VALUE_ROUND}f", kritChi)
-        println("Табличное Хи^2 = $kritChiStr\n")
+        val criticalChi = ChiSquaredDistribution(s.toDouble()).inverseCumulativeProbability(1 - alpha)
+        val criticalChiStr = String.format(Locale.US, "%.${VALUE_ROUND}f", criticalChi)
+        println("Табличное Хи^2 = $criticalChiStr\n")
 
         println(
-            if (chi < kritChi)
-                "Нулевая гипотеза принимается: $chiStr < $kritChiStr"
+            if (chi < criticalChi)
+                "Нулевая гипотеза принимается: $chiStr < $criticalChiStr"
             else
-                "Нулевая гипотеза отвергается: $chiStr >= $kritChiStr"
+                "Нулевая гипотеза отвергается: $chiStr >= $criticalChiStr"
         )
     }
 
