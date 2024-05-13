@@ -13,15 +13,20 @@ fun main() {
 const val ROUND_SIZE = 5
 
 fun Double.toLocalizedTime(startTime: Int) =
-    (this + startTime).let {
-        "${
-            this.round(ROUND_SIZE)
-        } (${
-            floor(it).roundToInt().toString().padStart(2, '0')
-        }:${
-            floor((it % 1.0) * 60).roundToInt().toString().padStart(2, '0')
-        })"
-    }
+    if (!this.isNaN())
+        (this + startTime).let {
+            "${
+                this.round(ROUND_SIZE)
+            } (${
+                floor(it).roundToInt().let { 
+                    val plusDays = it / 24
+                    "${(it % 24).toString().padStart(2, '0')}${if (plusDays > 0) " + $plusDays д." else ""}"
+                }
+            }:${
+                floor((it % 1.0) * 60).roundToInt().toString().padStart(2, '0')
+            })"
+        }
+    else "NaN"
 
 fun Double.round(decimals: Int) =
     String.format(
@@ -53,11 +58,7 @@ data class Event(
     val type: EventType,
     val time: Double,
     val queueSize: Int
-) {
-    fun getLocalizedTime(startTime: Int) =
-        time.toLocalizedTime(startTime)
-
-}
+)
 
 enum class EventType {
     ARRIVE,
@@ -66,25 +67,28 @@ enum class EventType {
 
 class QueuingSystem {
 
-    private var delayAfterClosure = 0.0  // время после T, когда уходит последний пациент
-    private var currentlyArrived = 0  // количество прибывших пациентов к моменту времени t
-    private var currentlyLeaved = 0  // количество уходов пациентов к моменту времени t
-    private var currentQueryLength = 0  // количество пациентов к моменту времени t
+    private var currentlyArrived = 0    // Количество прибывших клиентов к моменту времени t
+    private var currentlyLeaved = 0     // Количество обслуженных клиентов к моменту времени t
+    private var currentQueryLength = 0  // Количество клиентов в очереди к моменту времени t
 
-    private val intensity = 2000.0  // интенсивность, количество пациентов в час
-    private val lambda = 2.03  // интенсивоность появления событий
+    private var lastArrived = 0.0   // Время последнего пришедшего клиента
+    private var lastLeaved = 0.0    // Время последнего ушедшего клиента
+    private var globalTime = 0.0    // Глобальное время всей системы
+
+    private val intensity = 15.0    // Часовая стандартная интенсивность прихода клиентов
+    private val lambda = 2.03       // Интенсивность времени обслуживания
 
     private val events = arrayListOf<Event>()
     private val clients = arrayListOf<Client>()
 
-    private var globalTime = 0.0
-    private var lastArrived = 0.0
-    private var lastLeaved = 0.0
-    private var workTime = 0.0
-
     private val startTime = 9
     private val endTime = 23
+    private val workTime: Int
+        get() = endTime - startTime
 
+    /**
+     * Карта интенсивности.
+     */
     private val lambdaMap = mapOf(
         "9:00-10:00" to 20.2 / 60,
         "10:00-11:00" to 28.1 / 60,
@@ -102,66 +106,99 @@ class QueuingSystem {
         "22:00-23:00" to 20.2 / 60
     )
 
+    /**
+     * Интервальная функция интенсивности.
+     * @param t Время, для которого мы ищем интенсивность.
+     * @return Интенсивность в конкретный час.
+     */
     private fun functionLambda(t: Double) =
         lambdaMap[floor(t + startTime).roundToInt().let {
             "$it:00-${it + 1}:00"
         }] ?: 0.0
 
+    /**
+     * Пуассоновский процесс.
+     * Необходим для генерации случайного времени прихода клиента.
+     * @param s Время системы при вызове.
+     * @param lambda Лямбда-параметр функции.
+     * @return Время предположительного прихода следующего клиента.
+     */
     private fun poissonProcess(s: Double, lambda: Double): Double {
         var t = s
+
         do {
             val u1 = Random.nextDouble(0.0, 1.0)
             t -= ln(u1) / lambda
-            if (t > endTime - startTime)
-                return t
             val u2 = Random.nextDouble(0.0, 1.0)
-        } while (u2 > functionLambda(t) / lambda)
+        } while (
+            u2 > functionLambda(t) / lambda // Проверка соответствия вероятности появления клиентов
+            && t <= workTime                // Проверка выхода времени за рамки рабочего времени
+        )
+
         return t
     }
 
-    private fun firstClientIdInQueue() =
+    /**
+     * Получение ID следующего стоящего в очереди клиента.
+     * @return Если в очереди меньше 2 человек - null, иначе - id (int).
+     */
+    private fun nextClientInQueueId() =
         events
-            .groupBy { it.clientId }
-            .filter { it.value.size != 2 }
+            .groupBy { it.clientId }        // Группируем события по клиентам
+            .filter { it.value.size != 2 }  // Ищем клиентов в очереди
             .let {
-                if (it.size < 2)
-                    return@let null
+                if (it.size < 2)    // Если в очереди меньше 2 человек,
+                    return@let null // то ожидающих своей очереди человек нет
                 else
                     it.map { pair -> pair.key }[1]
             }
 
-    // Случайная переменная времени обслуживания клиента
+    /**
+     * Показательный процесс.
+     * Необходим для генерации случайного времени обслуживания клиента.
+     * @param lambda Лямбда-параметр функции.
+     * @return Время обслуживания клиента.
+     */
     private fun exponentialProcess(lambda: Double) =
         -ln(Random.nextDouble(0.0, 1.0)) / lambda
 
+    /**
+     * Ситуация, когда прибыл новый клиент.
+     */
     private fun clientArrived() {
-        globalTime = lastArrived  // Ta - время прибытия пациента
-        currentlyArrived += 1  // Na - количество прибывших пациентов (номер пациента)
-        currentQueryLength += 1  // n - количество пациентов
-        lastArrived = poissonProcess(globalTime, intensity)  // Ta = Tt время следующего прибытия пациента
-        if (currentQueryLength == 1) {
-            lastLeaved = globalTime + exponentialProcess(lambda)  // Td - время уход пациента
-        }
+        globalTime = lastArrived
+
+        currentlyArrived += 1   // Обслужено клиентов
+        currentQueryLength += 1 // Текущая длина очереди
+
+        lastArrived = poissonProcess(globalTime, intensity) // Время следующего предполагаемого прибытия клиента
+        if (currentQueryLength == 1)
+            lastLeaved = globalTime + exponentialProcess(lambda)  // Генерируем время ухода следующего клиента
+
         clients.add(Client(arrivalTime = globalTime))
         events.add(Event(currentlyArrived, EventType.ARRIVE, globalTime, currentQueryLength))
     }
 
+    /**
+     * Ситуация, когда клиент УЖЕ был обслужен.
+     */
     private fun clientLeaved() {
 
-        globalTime = lastLeaved  // Td - время ухода пациента
+        globalTime = lastLeaved
 
-        currentlyLeaved += 1  // Nd - количество уходов пациента
-        currentQueryLength -= 1  // n - количество пациентов (уменьшается если уходит пациент)
+        currentlyLeaved += 1    // Обслужено клиентов
+        currentQueryLength -= 1 // Текущая длина очереди
 
-        lastLeaved = if (currentQueryLength == 0)  // Если уходит последний пациент
-            Double.MAX_VALUE  // Бесконечность
-        else  // Если не уходит последний пациент
-            globalTime + exponentialProcess(lambda)  // Td - время ухода пациента
+        lastLeaved =
+            if (currentQueryLength == 0)    // Если обслужен последний клиент
+                Double.MAX_VALUE
+            else                            // Если в очереди ещё есть люди
+                globalTime + exponentialProcess(lambda)
 
         clients.find { it.id == currentlyLeaved }?.apply {
             leaveTime = globalTime
 
-            firstClientIdInQueue()?.let { id ->
+            nextClientInQueueId()?.let { id ->
                 clients.find { it.id == id }?.let {
                     it.inQueueTime = globalTime - it.arrivalTime
                 }
@@ -171,28 +208,26 @@ class QueuingSystem {
         events.add(Event(currentlyLeaved, EventType.LEAVE, globalTime, currentQueryLength))
     }
 
-    private fun countDelayAfterClosure() {
-        delayAfterClosure = max(globalTime - workTime, .0)  // время после T, когда уходит последний пациент
-    }
+    /**
+     * Функция подсчёта времени после T,
+     * когда обслужен последний клиент.
+     */
+    private fun countDelayAfterClosure() = max(globalTime - workTime, .0)
 
     init {
-        workTime = (endTime - startTime).toDouble()
-        println("Время начала смены: \t${startTime.toString().padStart(2, '0')}:00")  // Время начала смены
-        println("Время окончания смены: \t${endTime.toString().padStart(2, '0')}:00")  // Время окончания смены
-        println("Рабочее время: \t\t\t${workTime.roundToInt()} часов")  // Время работы
+        println("Время начала смены: \t${startTime.toString().padStart(2, '0')}:00")
+        println("Время окончания смены: \t${endTime.toString().padStart(2, '0')}:00")
+        println("Рабочее время: \t\t\t${workTime} часов")
 
-        lastArrived = exponentialProcess(lambda)  // tA = T0
-        lastLeaved = Double.MAX_VALUE  // Бесконечность
+        lastArrived = exponentialProcess(lambda) // Время прихода первого клиента через показательный процесс.
+        lastLeaved = Double.MAX_VALUE
 
         while (true) {
             when {
                 (lastArrived <= lastLeaved) && (lastArrived <= workTime) -> clientArrived()
                 (lastLeaved < lastArrived) && (lastLeaved <= workTime) -> clientLeaved()
                 (minOf(lastArrived, lastLeaved) > workTime) && (currentQueryLength > 0) -> clientLeaved()
-                (minOf(lastArrived, lastLeaved) > workTime) && (currentQueryLength == 0) -> {
-                    countDelayAfterClosure()
-                    break
-                }
+                (minOf(lastArrived, lastLeaved) > workTime) && (currentQueryLength == 0) -> break
             }
         }
 
@@ -243,7 +278,7 @@ class QueuingSystem {
         println("\t\t\t-={X}=-\t-={X}=-\t-={X}=-")
         println("Оценки:")
         println("Количество клиентов за смену: \t\t${clients.size}")
-        println("Время задержки закрытия: \t\t\t${delayAfterClosure.toLocalizedTime(0)}")
+        println("Время задержки закрытия: \t\t\t${countDelayAfterClosure().toLocalizedTime(0)}")
         println("Среднее время клиента в очереди: \t${clients.map { it.inQueueTime }.average().toLocalizedTime(0)}")
         println("Среднее время клиента в системе: \t${clients.map { it.inSystemTime }.average().toLocalizedTime(0)}")
         println(
