@@ -18,7 +18,7 @@ fun Double.toLocalizedTime(startTime: Int) =
             "${
                 this.round(ROUND_SIZE)
             } (${
-                floor(it).roundToInt().let { 
+                floor(it).roundToInt().let {
                     val plusDays = it / 24
                     "${(it % 24).toString().padStart(2, '0')}${if (plusDays > 0) " + $plusDays д." else ""}"
                 }
@@ -69,7 +69,7 @@ class QueuingSystem {
 
     private var currentlyArrived = 0    // Количество прибывших клиентов к моменту времени t
     private var currentlyLeaved = 0     // Количество обслуженных клиентов к моменту времени t
-    private var currentQueryLength = 0  // Количество клиентов в очереди к моменту времени t
+    private var currentQueueLength = 0  // Количество клиентов в очереди к моменту времени t
 
     private var lastArrived = 0.0   // Время последнего пришедшего клиента
     private var lastLeaved = 0.0    // Время последнего ушедшего клиента
@@ -130,6 +130,7 @@ class QueuingSystem {
             val u1 = Random.nextDouble(0.0, 1.0)
             t -= ln(u1) / lambda
             val u2 = Random.nextDouble(0.0, 1.0)
+            println(functionLambda(t) / lambda)
         } while (
             u2 > functionLambda(t) / lambda // Проверка соответствия вероятности появления клиентов
             && t <= workTime                // Проверка выхода времени за рамки рабочего времени
@@ -169,14 +170,14 @@ class QueuingSystem {
         globalTime = lastArrived
 
         currentlyArrived += 1   // Обслужено клиентов
-        currentQueryLength += 1 // Текущая длина очереди
+        currentQueueLength += 1 // Текущая длина очереди
 
         lastArrived = poissonProcess(globalTime, intensity) // Время следующего предполагаемого прибытия клиента
-        if (currentQueryLength == 1)
+        if (currentQueueLength == 1)
             lastLeaved = globalTime + exponentialProcess(lambda)  // Генерируем время ухода следующего клиента
 
         clients.add(Client(arrivalTime = globalTime))
-        events.add(Event(currentlyArrived, EventType.ARRIVE, globalTime, currentQueryLength))
+        events.add(Event(currentlyArrived, EventType.ARRIVE, globalTime, currentQueueLength))
     }
 
     /**
@@ -187,10 +188,10 @@ class QueuingSystem {
         globalTime = lastLeaved
 
         currentlyLeaved += 1    // Обслужено клиентов
-        currentQueryLength -= 1 // Текущая длина очереди
+        currentQueueLength -= 1 // Текущая длина очереди
 
         lastLeaved =
-            if (currentQueryLength == 0)    // Если обслужен последний клиент
+            if (currentQueueLength == 0)    // Если обслужен последний клиент
                 Double.MAX_VALUE
             else                            // Если в очереди ещё есть люди
                 globalTime + exponentialProcess(lambda)
@@ -205,7 +206,7 @@ class QueuingSystem {
             }
 
         }
-        events.add(Event(currentlyLeaved, EventType.LEAVE, globalTime, currentQueryLength))
+        events.add(Event(currentlyLeaved, EventType.LEAVE, globalTime, currentQueueLength))
     }
 
     /**
@@ -226,8 +227,8 @@ class QueuingSystem {
             when {
                 (lastArrived <= lastLeaved) && (lastArrived <= workTime) -> clientArrived()
                 (lastLeaved < lastArrived) && (lastLeaved <= workTime) -> clientLeaved()
-                (minOf(lastArrived, lastLeaved) > workTime) && (currentQueryLength > 0) -> clientLeaved()
-                (minOf(lastArrived, lastLeaved) > workTime) && (currentQueryLength == 0) -> break
+                (minOf(lastArrived, lastLeaved) > workTime) && (currentQueueLength > 0) -> clientLeaved()
+                (minOf(lastArrived, lastLeaved) > workTime) && (currentQueueLength == 0) -> break
             }
         }
 
