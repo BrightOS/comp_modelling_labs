@@ -1,13 +1,35 @@
 package rgr
 
+import de.vandermeer.asciitable.AT_Cell
 import de.vandermeer.asciitable.AT_Context
 import de.vandermeer.asciitable.AsciiTable
+import de.vandermeer.skb.interfaces.transformers.textformat.TextAlignment
 import java.util.*
-import kotlin.math.*
+import kotlin.math.floor
+import kotlin.math.ln
+import kotlin.math.max
+import kotlin.math.roundToInt
 import kotlin.random.Random
 
 fun main() {
-    QueuingSystem()
+    val dataScores = mutableListOf<DataScores>()
+
+    dataScores.add(QueuingSystem().startWithOutput())
+    repeat(89) {
+        dataScores.add(QueuingSystem().start())
+    }
+
+    println(
+        DataScores(
+            clientsCount = -1,
+            daysCount = dataScores.size,
+            closingTimeDelay = dataScores.map { it.closingTimeDelay }.average(),
+            averageQueueTime = dataScores.map { it.averageQueueTime }.average(),
+            averageSystemTime = dataScores.map { it.averageSystemTime }.average(),
+            averageOccupancyRate = dataScores.map { it.averageOccupancyRate }.average(),
+            averageQueueLength = dataScores.map { it.averageQueueLength }.average(),
+        )
+    )
 }
 
 const val ROUND_SIZE = 5
@@ -35,6 +57,20 @@ fun Double.round(decimals: Int) =
         this
     )
 
+fun getDayAddition(num: Int): String {
+    val preLastDigit = num % 100 / 10
+
+    if (preLastDigit == 1) {
+        return "дней"
+    }
+
+    return when (num % 10) {
+        1 -> "день"
+        2, 3, 4 -> "дня"
+        else -> "дней"
+    }
+}
+
 data class Client(
     var id: Int = lastId++,
     val arrivalTime: Double,
@@ -50,6 +86,9 @@ data class Client(
 
     companion object {
         private var lastId = 1
+        fun resetLastId() {
+            lastId = 1
+        }
     }
 }
 
@@ -63,6 +102,46 @@ data class Event(
 enum class EventType {
     ARRIVE,
     LEAVE
+}
+
+data class DataScores(
+    val clientsCount: Int,
+    val daysCount: Int,
+    val closingTimeDelay: Double,
+    val averageQueueTime: Double,
+    val averageSystemTime: Double,
+    val averageOccupancyRate: Double,
+    val averageQueueLength: Double
+) {
+//    override fun toString() =
+//        StringBuilder()
+//            .appendLine()
+//            .appendLine("\t\t\t-={X}=-\t-={X}=-\t-={X}=-")
+//            .appendLine("Оценки за $daysCount ${getDayAddition(daysCount)}:")
+//            .append(if (clientsCount > 0) "Количество клиентов за смену: \t\t${clientsCount}\n" else "")
+//            .appendLine("Время задержки закрытия: \t\t\t${closingTimeDelay.toLocalizedTime(0)}")
+//            .appendLine("Среднее время клиента в очереди: \t${averageQueueTime.toLocalizedTime(0)}")
+//            .appendLine("Среднее время клиента в системе: \t${averageSystemTime.toLocalizedTime(0)}")
+//            .appendLine("Коэффициент занятости устройства: \t${averageOccupancyRate.round(ROUND_SIZE)}")
+//            .appendLine("Средняя длина очереди: \t\t\t\t${averageQueueLength.round(ROUND_SIZE)}")
+//            .toString()
+
+    override fun toString() =
+        AsciiTable().apply {
+            addRule()
+            addRow(null, "Оценки за $daysCount ${getDayAddition(daysCount)}:").apply {
+                this.setTextAlignment(TextAlignment.CENTER)
+            }
+            addRule()
+            if (clientsCount > 0)
+                addRow("Количество клиентов за смену", clientsCount)
+            addRow("Время задержки закрытия", closingTimeDelay.toLocalizedTime(0))
+            addRow("Среднее время клиента в очереди", averageQueueTime.toLocalizedTime(0))
+            addRow("Среднее время клиента в системе", averageSystemTime.toLocalizedTime(0))
+            addRow("Коэффициент занятости устройства", averageOccupancyRate.round(ROUND_SIZE))
+            addRow("Средняя длина очереди", averageQueueLength.round(ROUND_SIZE))
+            addRule()
+        }.render()
 }
 
 class QueuingSystem {
@@ -130,7 +209,7 @@ class QueuingSystem {
             val u1 = Random.nextDouble(0.0, 1.0)
             t -= ln(u1) / lambda
             val u2 = Random.nextDouble(0.0, 1.0)
-            println(functionLambda(t) / lambda)
+//            println(functionLambda(t) / lambda) // Вероятность появления клиентов
         } while (
             u2 > functionLambda(t) / lambda // Проверка соответствия вероятности появления клиентов
             && t <= workTime                // Проверка выхода времени за рамки рабочего времени
@@ -215,22 +294,10 @@ class QueuingSystem {
      */
     private fun countDelayAfterClosure() = max(globalTime - workTime, .0)
 
-    init {
+    fun startWithOutput() = start().let {
         println("Время начала смены: \t${startTime.toString().padStart(2, '0')}:00")
         println("Время окончания смены: \t${endTime.toString().padStart(2, '0')}:00")
         println("Рабочее время: \t\t\t${workTime} часов")
-
-        lastArrived = exponentialProcess(lambda) // Время прихода первого клиента через показательный процесс.
-        lastLeaved = Double.MAX_VALUE
-
-        while (true) {
-            when {
-                (lastArrived <= lastLeaved) && (lastArrived <= workTime) -> clientArrived()
-                (lastLeaved < lastArrived) && (lastLeaved <= workTime) -> clientLeaved()
-                (minOf(lastArrived, lastLeaved) > workTime) && (currentQueueLength > 0) -> clientLeaved()
-                (minOf(lastArrived, lastLeaved) > workTime) && (currentQueueLength == 0) -> break
-            }
-        }
 
         println(AsciiTable(AT_Context().apply {
             width = 120
@@ -238,12 +305,12 @@ class QueuingSystem {
             addRule()
             addRow("Событие", "Время события", "Клиентов в очереди")
             addRule()
-            events.forEach {
+            events.forEach { event ->
                 addRow(
-                    when (it.type) {
-                        EventType.ARRIVE -> "Пришёл клиент под номером ${it.clientId}"
-                        EventType.LEAVE -> "Обслужен клиент под номером ${it.clientId}"
-                    }, it.time.toLocalizedTime(startTime), it.queueSize
+                    when (event.type) {
+                        EventType.ARRIVE -> "Пришёл клиент под номером ${event.clientId}"
+                        EventType.LEAVE -> "Обслужен клиент под номером ${event.clientId}"
+                    }, event.time.toLocalizedTime(startTime), event.queueSize
                 )
             }
             addRule()
@@ -262,34 +329,48 @@ class QueuingSystem {
                 "Время в системе"
             )
             addRule()
-            clients.forEach {
+            clients.forEach { client ->
                 addRow(
-                    it.id,
-                    it.arrivalTime.toLocalizedTime(startTime),
-                    it.leaveTime?.toLocalizedTime(startTime),
-                    it.serviceTime.toLocalizedTime(0),
-                    it.inQueueTime.toLocalizedTime(0),
-                    it.inSystemTime.toLocalizedTime(0)
+                    client.id,
+                    client.arrivalTime.toLocalizedTime(startTime),
+                    client.leaveTime?.toLocalizedTime(startTime),
+                    client.serviceTime.toLocalizedTime(0),
+                    client.inQueueTime.toLocalizedTime(0),
+                    client.inSystemTime.toLocalizedTime(0)
                 )
             }
             addRule()
         }.render())
 
 
-        println("\t\t\t-={X}=-\t-={X}=-\t-={X}=-")
-        println("Оценки:")
-        println("Количество клиентов за смену: \t\t${clients.size}")
-        println("Время задержки закрытия: \t\t\t${countDelayAfterClosure().toLocalizedTime(0)}")
-        println("Среднее время клиента в очереди: \t${clients.map { it.inQueueTime }.average().toLocalizedTime(0)}")
-        println("Среднее время клиента в системе: \t${clients.map { it.inSystemTime }.average().toLocalizedTime(0)}")
-        println(
-            "Коэффициент занятости устройства: \t${
-                (1 - (events.last().time - events[events.size - 2].time) / workTime).round(
-                    ROUND_SIZE
-                )
-            }"
-        )
-        println("Средняя длина очереди: \t\t\t\t${events.map { it.queueSize }.average().round(ROUND_SIZE)}")
-        println("\t\t\t-={X}=-\t-={X}=-\t-={X}=-")
+        println(it)
+        it
     }
+
+    fun start(): DataScores {
+        Client.resetLastId()
+
+        lastArrived = exponentialProcess(lambda) // Время прихода первого клиента через показательный процесс.
+        lastLeaved = Double.MAX_VALUE
+
+        while (true) {
+            when {
+                (lastArrived <= lastLeaved) && (lastArrived <= workTime) -> clientArrived()
+                (lastLeaved < lastArrived) && (lastLeaved <= workTime) -> clientLeaved()
+                (minOf(lastArrived, lastLeaved) > workTime) && (currentQueueLength > 0) -> clientLeaved()
+                (minOf(lastArrived, lastLeaved) > workTime) && (currentQueueLength == 0) -> break
+            }
+        }
+
+        return DataScores(
+            clientsCount = clients.size,
+            daysCount = 1,
+            closingTimeDelay = countDelayAfterClosure(),
+            averageQueueTime = clients.map { it.inQueueTime }.average(),
+            averageSystemTime = clients.map { it.inSystemTime }.average(),
+            averageOccupancyRate = (1 - (events.last().time - events[events.size - 2].time) / workTime),
+            averageQueueLength = events.map { it.queueSize }.average()
+        )
+    }
+
 }
