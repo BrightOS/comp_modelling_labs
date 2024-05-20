@@ -3,11 +3,11 @@ import java.io.File
 import java.util.Collections
 import kotlin.math.pow
 import kotlin.math.sqrt
-import kotlin.time.Duration.Companion.seconds
+import kotlin.random.Random
 import kotlin.time.measureTime
 
 fun main() {
-    val experiments = 120
+    val experiments = 50
     println("Experiments count: $experiments\n")
 
     val tests = listOf(
@@ -17,7 +17,14 @@ fun main() {
     ).map {
         it.first to buildList {
             repeat(experiments) { _ ->
-                add(GeneticAlgorithm(it.second, 5, 4))
+                add(
+                    GeneticAlgorithm(
+                        filename = it.second,
+                        generations = 5,
+                        populationLength = 4,
+                        mutationRate = 1.0
+                    )
+                )
             }
         }
     }
@@ -69,7 +76,8 @@ data class DataScores(
 class GeneticAlgorithm(
     filename: String,
     private val generations: Int,
-    private val populationLength: Int
+    private val populationLength: Int,
+    private val mutationRate: Double
 ) {
 
     private val cities = getCitiesFromFile(filename)
@@ -79,12 +87,15 @@ class GeneticAlgorithm(
         var population = createPopulation()
 
         var bestDistance = Double.POSITIVE_INFINITY
-        for (generationCurrent in 1..<generations) {
+        repeat(generations - 1) {
             val parents = selection(population)
             val children = cross(parents)
-            val mutant = getMutant(children)
+            val mutant = if (Random.nextDouble(.0, 1.0) <= mutationRate)
+                mutate(children)
+            else
+                null
 
-            population = (population + children + listOf(mutant))
+            population = (population + children + (mutant?.let { listOf(it) } ?: emptyList()))
                 .sortedBy { calculateRouteLength(it) }
                 .take(populationLength)
 
@@ -131,6 +142,7 @@ class GeneticAlgorithm(
             repeat(route.size - 1) { index ->
                 add(roads.find { it.city1 == route[index] && it.city2 == route[index + 1] })
             }
+            add(roads.find { it.city1 == route[route.size - 1] && it.city2 == route[0] })
         }.fold(.0) { acc, road -> acc + (road?.distance ?: throw Exception("WHAT THE HEEEEEEELL")) }
 
     private fun createPopulation(): List<List<City>> {
@@ -196,7 +208,7 @@ class GeneticAlgorithm(
         return children.map { it.toList() }
     }
 
-    private fun getMutant(children: List<List<City>>): List<City> {
+    private fun mutate(children: List<List<City>>): List<City> {
         val citiesCount = children[0].size
 
         val first = (0..<citiesCount).random()

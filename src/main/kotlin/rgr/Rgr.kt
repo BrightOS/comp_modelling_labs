@@ -1,6 +1,5 @@
 package rgr
 
-import de.vandermeer.asciitable.AT_Cell
 import de.vandermeer.asciitable.AT_Context
 import de.vandermeer.asciitable.AsciiTable
 import de.vandermeer.skb.interfaces.transformers.textformat.TextAlignment
@@ -209,7 +208,7 @@ class QueuingSystem {
             val u1 = Random.nextDouble(0.0, 1.0)
             t -= ln(u1) / lambda
             val u2 = Random.nextDouble(0.0, 1.0)
-//            println(functionLambda(t) / lambda) // Вероятность появления клиентов
+            println(functionLambda(t) / lambda) // Вероятность появления клиентов
         } while (
             u2 > functionLambda(t) / lambda // Проверка соответствия вероятности появления клиентов
             && t <= workTime                // Проверка выхода времени за рамки рабочего времени
